@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Generador de Imagen</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:Arial,sans-serif;background:#d0d0d0;min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;padding:18px 12px;gap:14px;}
+
+  #panel{background:#fff;border-radius:10px;padding:16px 20px;width:100%;max-width:1000px;
+    box-shadow:0 2px 14px #0003;display:flex;flex-direction:column;gap:11px;}
+  #panel h2{font-size:13px;font-weight:700;color:#222;letter-spacing:.04em;}
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+  .field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px;}
+  .field label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#666;}
+  .field input[type="text"]{border:1.5px solid #ddd;border-radius:6px;padding:7px 10px;font-size:14px;font-family:inherit;outline:none;}
+  .field input[type="text"]:focus{border-color:#d32f2f;}
+  .field input[type="file"]{border:2px dashed #ccc;border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;background:#fafafa;color:#555;}
+  .range-row{display:flex;align-items:center;gap:6px;}
+  .range-row input{flex:1;accent-color:#d32f2f;cursor:pointer;}
+  .range-row span{font-size:12px;font-weight:700;color:#d32f2f;min-width:30px;}
+
+  .btn{padding:8px 14px;border-radius:6px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .1s;}
+  .btn:active{transform:scale(.97);}
+  .btn-red{background:#d32f2f;color:#fff;}
+  .btn-dark{background:#222;color:#fff;}
+  .btn-gray{background:#eee;color:#333;border:1.5px solid #ccc;}
+  .btn-tool{background:#fff;border:2px solid #ccc;color:#444;font-size:16px;padding:5px 10px;border-radius:6px;cursor:pointer;transition:border-color .15s,background .15s;}
+  .btn-tool:hover{border-color:#1565c0;background:#e8f0fe;}
+  .btn-tool.active{border-color:#1565c0;background:#1565c0;color:#fff;}
+  #info{font-size:12px;color:#888;}
+
+  #draw-toolbar{background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  #draw-toolbar label{font-size:10px;font-weight:700;text-transform:uppercase;color:#666;}
+  .sep{width:1px;height:26px;background:#ddd;}
+
+  /* ── RESULTADO ── */
+  #result-area{width:100%;max-width:1000px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+  #canvas-wrapper{position:relative;width:100%;background:#fff;border:1.5px solid #bbb;border-radius:4px;overflow:hidden;}
+  #capture-box{display:flex;flex-direction:column;width:100%;}
+
+  /* filas genéricas */
+  .grid-row{display:flex;flex-direction:row;align-items:stretch;border-bottom:1.5px solid #ccc;}
+  .grid-row:last-child{border-bottom:none;}
+  .img-cell{flex:1;border-right:1.5px solid #ccc;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;min-width:0;}
+  .img-cell:last-child{border-right:none;}
+  .img-cell img{width:100%;height:100%;object-fit:contain;display:block;}
+  .text-cell{display:flex;align-items:center;justify-content:center;padding:10px;background:#fff;}
+
+  #draw-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+  #draw-svg.active{pointer-events:all;cursor:crosshair;}
+  #draw-svg.select-mode{cursor:default;}
+  .handle{cursor:nwse-resize;}
+  #dl-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <h2>⚙ Configuración</h2>
+  <div class="row">
+    <div class="field">
+      <label>Imágenes</label>
+      <input type="file" id="input-images" accept="image/*" multiple />
+    </div>
+    <div class="field">
+      <label>Texto en rojo</label>
+      <input type="text" id="input-texto" placeholder="Ej: Mis fotos"
+             oninput="actualizar()" onkeydown="if(event.key==='Enter')actualizar()"/>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label>Altura celda (px máx)</label>
+      <div class="range-row">
+        <input type="range" id="img-height" min="80" max="500" value="260" step="10"
+               oninput="document.getElementById('hval').textContent=this.value+'px';actualizar()"/>
+        <span id="hval">260px</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Tamaño texto</label>
+      <div class="range-row">
+        <input type="range" id="font-size" min="16" max="100" value="44" step="2"
+               oninput="document.getElementById('fval').textContent=this.value+'px';actualizar()"/>
+        <span id="fval">44px</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Cols por fila (base)</label>
+      <div class="range-row">
+        <input type="range" id="cols-base" min="2" max="6" value="4" step="1"
+               oninput="document.getElementById('cval').textContent=this.value;actualizar()"/>
+        <span id="cval">4</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Escala PNG</label>
+      <div class="range-row">
+        <input type="range" id="export-scale" min="1" max="4" value="3" step=".5"
+               oninput="document.getElementById('sval').textContent=this.value+'×'"/>
+        <span id="sval">3×</span>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn btn-red"  onclick="actualizar()">▶ Generar</button>
+    <button class="btn btn-dark" onclick="exportarCanvas()">📷 PNG alta calidad</button>
+    <button class="btn btn-gray" onclick="descargarHTML()">⬇ HTML</button>
+  </div>
+  <p id="info">Seleccioná imágenes y hacé clic en Generar.</p>
+  <div id="draw-toolbar">
+    <label>Dibujo:</label>
+    <button class="btn-tool active" id="tool-select" onclick="setTool('select')">↖</button>
+    <button class="btn-tool" id="tool-rect"   onclick="setTool('rect')">▭</button>
+    <button class="btn-tool" id="tool-circle" onclick="setTool('circle')">◯</button>
+    <button class="btn-tool" id="tool-arrow"  onclick="setTool('arrow')">➜</button>
+    <div class="sep"></div>
+    <label>Color:</label>
+    <input type="color" id="shape-color" value="#d32f2f"
+           style="width:30px;height:30px;border:none;background:none;cursor:pointer;padding:0;"/>
+    <label>Grosor:</label>
+    <div class="range-row" style="min-width:90px">
+      <input type="range" id="stroke-width" min="1" max="14" value="3"
+             oninput="document.getElementById('swval').textContent=this.value"/>
+      <span id="swval">3</span>
+    </div>
+    <div class="sep"></div>
+    <button class="btn btn-gray" onclick="deshacer()">↩ Deshacer</button>
+    <button class="btn btn-gray" onclick="eliminarSeleccionada()">🗑 Borrar</button>
+    <button class="btn btn-gray" onclick="limpiarFormas()">✕ Limpiar</button>
+  </div>
+</div>
+
+<div id="result-area">
+  <div id="canvas-wrapper">
+    <div id="capture-box"></div>
+    <svg id="draw-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+  <div id="dl-row">
+    <button class="btn btn-dark" onclick="exportarCanvas()">📷 Descargar PNG alta calidad</button>
+    <button class="btn btn-gray" onclick="descargarHTML()">⬇ Descargar HTML</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  ESTADO
+// ═══════════════════════════════════════════════════
+let dataURLs = [];   // {url, nw, nh, img}
+let layoutData = []; // filas calculadas para el export
+let currentTool = 'select';
+let shapes = [], history = [];
+let selectedId = null;
+let drawing = false, resizing = false;
+let startX, startY, dragOffX, dragOffY, dragStartShape, resizeHandle;
+let nextId = 1;
+
+const svgEl  = document.getElementById('draw-svg');
+const wrapper= document.getElementById('canvas-wrapper');
+const box    = document.getElementById('capture-box');
+
+// ═══════════════════════════════════════════════════
+//  CARGA DE IMÁGENES
+// ═══════════════════════════════════════════════════
+document.getElementById('input-images').addEventListener('change', function(){
+  dataURLs = [];
+  const files = Array.from(this.files);
+  if(!files.length) return;
+  let done = 0;
+  files.forEach((f,i)=>{
+    const r = new FileReader();
+    r.onload = e=>{
+      const url = e.target.result;
+      const im  = new Image();
+      im.onload = ()=>{
+        dataURLs[i] = {url, nw:im.naturalWidth, nh:im.naturalHeight, img:im};
+        if(++done === files.length){
+          const isLand = dataURLs.filter(d=>d.nw>d.nh).length > dataURLs.length/2;
+          document.getElementById('info').textContent =
+            `✔ ${files.length} imagen(es) — orientación mayoritaria: ${isLand?'horizontal (4:3)':'vertical (3:4)'}`;
+          actualizar();
+        }
+      };
+      im.src = url;
+    };
+    r.readAsDataURL(f);
+  });
+});
+
+// ═══════════════════════════════════════════════════
+//  LÓGICA DE LAYOUT: pirámide XXXX / XXXT / XXX
+//
+//  Detecta orientación mayoritaria.
+//  Landscape (4:3): celdas más anchas → menos cols por fila OK
+//  Portrait  (3:4): celdas más altas  → más cols por fila OK
+//
+//  Estructura de filas (de arriba a abajo):
+//    fila 0: colsBase imágenes
+//    fila 1: (colsBase-1) imágenes + 1 texto
+//    fila 2: (colsBase-1) imágenes (o menos si se acaban)
+//    ... sigue bajando hasta agotar imágenes
+//
+//  El texto siempre ocupa la última celda de la fila 1.
+//  object-fit: contain → sin recorte.
+// ═══════════════════════════════════════════════════
+
+function buildLayout(entries, colsBase, altMax, containerW) {
+  /*
+    Patrón de columnas por fila:
+      fila 0 → colsBase
+      fila 1 → colsBase-1 imgs + 1 text
+      fila 2 → colsBase-1
+      fila 3 → colsBase-2
+      fila 4 → colsBase-2
+      ...decrece de 1 cada 2 filas (nunca menos de 1)
+    Retorna array de filas: [{type:'img'|'text', entry?, colSpan:1}]
+  */
+  const rows = [];
+  let imgIdx = 0;
+  const n = entries.length;
+
+  // Genera el patrón de cols por fila hasta agotar imágenes
+  let rowNum = 0;
+  while(imgIdx < n){
+    const cols = colsForRow(rowNum, colsBase);
+    const isTextRow = rowNum === 1; // fila 1 tiene texto al final
+
+    const cells = [];
+    const imgSlots = isTextRow ? cols - 1 : cols;
+
+    for(let c = 0; c < imgSlots && imgIdx < n; c++){
+      cells.push({type:'img', entry: entries[imgIdx++]});
+    }
+    if(isTextRow){
+      cells.push({type:'text'});
+    }
+    if(cells.length > 0) rows.push(cells);
+    rowNum++;
+  }
+  // Si quedó texto sin agregar (n < 2 imgs), agregar fila de texto sola
+  const hasText = rows.some(r=>r.some(c=>c.type==='text'));
+  if(!hasText) rows.push([{type:'text'}]);
+
+  // Calcular altura de cada fila según aspect ratio de sus imágenes
+  rows.forEach(cells=>{
+    const imgCells = cells.filter(c=>c.type==='img');
+    const numCols  = cells.length; // incluyendo texto
+    const cellW    = containerW / numCols;
+    let rowH = altMax;
+    imgCells.forEach(c=>{
+      if(!c.entry) return;
+      const ratio = c.entry.nw / c.entry.nh;
+      const ideal = cellW / ratio; // altura que NO recorta
+      if(ideal < rowH) rowH = ideal;
+    });
+    cells._h = Math.max(60, Math.round(rowH));
+  });
+
+  return rows;
+}
+
+function colsForRow(rowNum, base){
+  // fila 0 → base, fila 1 → base (texto ocupa 1), fila 2 → base-1, fila 3 → base-1, fila 4 → base-2 ...
+  if(rowNum === 0) return base;
+  if(rowNum === 1) return base; // 1 celda es texto
+  const dec = Math.floor((rowNum - 1) / 2); // decrece cada 2 filas a partir de fila 2
+  return Math.max(1, base - dec);
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDERIZAR HTML
+// ═══════════════════════════════════════════════════
+function actualizar(){
+  const texto   = document.getElementById('input-texto').value.trim();
+  const altMax  = parseInt(document.getElementById('img-height').value);
+  const fsize   = parseInt(document.getElementById('font-size').value);
+  const colsBase= parseInt(document.getElementById('cols-base').value);
+  const label   = texto ? texto.toUpperCase() : 'TEXTO';
+
+  const entries = dataURLs.length > 0 ? dataURLs : makePlaceholders(colsBase*3);
+  const containerW = wrapper.clientWidth || 900;
+
+  const rows = buildLayout(entries, colsBase, altMax, containerW);
+  layoutData = rows; // guardar para export
+
+  box.innerHTML = '';
+  rows.forEach(cells=>{
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'grid-row';
+    rowDiv.style.height = cells._h + 'px';
+
+    cells.forEach(cell=>{
+      if(cell.type === 'img'){
+        const div = document.createElement('div');
+        div.className = 'img-cell';
+        if(cell.entry && cell.entry.url){
+          const img = document.createElement('img');
+          img.src = cell.entry.url;
+          div.appendChild(img);
+        } else if(cell.entry){
+          div.style.fontSize='15px'; div.style.fontWeight='700'; div.style.color='#aaa';
+          div.textContent = cell.entry.label||'IMG';
+        }
+        rowDiv.appendChild(div);
+      } else {
+        // celda de texto
+        const div = document.createElement('div');
+        div.className = 'img-cell text-cell';
+        const span = document.createElement('span');
+        span.textContent = label;
+        span.style.cssText = `font-family:Arial,sans-serif;font-weight:700;color:#d32f2f;
+          text-transform:uppercase;letter-spacing:.04em;line-height:1.1;font-size:${fsize}px;text-align:center;`;
+        div.appendChild(span);
+        rowDiv.appendChild(div);
+      }
+    });
+    box.appendChild(rowDiv);
+  });
+
+  setTimeout(redraw, 40);
+}
+
+function makePlaceholders(n){
+  const out=[];
+  for(let i=0;i<n;i++) out.push({url:null,nw:3,nh:4,img:null,label:`IMG${i+1}`});
+  return out;
+}
+
+// ═══════════════════════════════════════════════════
+//  HERRAMIENTA / SVG
+// ═══════════════════════════════════════════════════
+function setTool(t){
+  currentTool=t;
+  document.querySelectorAll('.btn-tool').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tool-'+t).classList.add('active');
+  svgEl.classList.toggle('active',true);
+  svgEl.classList.toggle('select-mode',t==='select');
+  if(t!=='select') selectedId=null;
+  redraw();
+}
+setTool('select');
+
+function redraw(){
+  const W=wrapper.offsetWidth, H=wrapper.offsetHeight;
+  svgEl.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svgEl.setAttribute('width',W); svgEl.setAttribute('height',H);
+  while(svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+  const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+  shapes.forEach(s=>{
+    if(s.type!=='arrow') return;
+    const m=document.createElementNS('http://www.w3.org/2000/svg','marker');
+    m.setAttribute('id','arr-'+s.id); m.setAttribute('markerWidth','10');
+    m.setAttribute('markerHeight','7'); m.setAttribute('refX','9');
+    m.setAttribute('refY','3.5'); m.setAttribute('orient','auto');
+    const p=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    p.setAttribute('points','0 0,10 3.5,0 7'); p.setAttribute('fill',s.color);
+    m.appendChild(p); defs.appendChild(m);
+  });
+  svgEl.appendChild(defs);
+
+  shapes.forEach(s=>{
+    const sel=s.id===selectedId; let el;
+    if(s.type==='rect'){
+      el=document.createElementNS('http://www.w3.org/2000/svg','rect');
+      const x=s.w<0?s.x+s.w:s.x, y=s.h<0?s.y+s.h:s.y;
+      el.setAttribute('x',x);el.setAttribute('y',y);
+      el.setAttribute('width',Math.abs(s.w));el.setAttribute('height',Math.abs(s.h));
+      el.setAttribute('rx',3);el.setAttribute('fill','none');
+      el.setAttribute('stroke',s.color);el.setAttribute('stroke-width',s.sw);
+      if(sel)el.setAttribute('stroke-dasharray','6 3');
+    } else if(s.type==='circle'){
+      el=document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+      el.setAttribute('cx',s.x+s.w/2);el.setAttribute('cy',s.y+s.h/2);
+      el.setAttribute('rx',Math.abs(s.w/2));el.setAttribute('ry',Math.abs(s.h/2));
+      el.setAttribute('fill','none');
+      el.setAttribute('stroke',s.color);el.setAttribute('stroke-width',s.sw);
+      if(sel)el.setAttribute('stroke-dasharray','6 3');
+    } else if(s.type==='arrow'){
+      el=document.createElementNS('http://www.w3.org/2000/svg','line');
+      el.setAttribute('x1',s.x1);el.setAttribute('y1',s.y1);
+      el.setAttribute('x2',s.x2);el.setAttribute('y2',s.y2);
+      el.setAttribute('stroke',s.color);el.setAttribute('stroke-width',s.sw);
+      el.setAttribute('marker-end',`url(#arr-${s.id})`);
+      if(sel)el.setAttribute('stroke-dasharray','6 3');
+    }
+    if(el){
+      el.dataset.id=s.id;
+      el.style.cursor=currentTool==='select'?'move':'crosshair';
+      svgEl.appendChild(el);
+      if(sel&&s.type!=='arrow'){
+        const bx=s.w<0?s.x+s.w:s.x,by=s.h<0?s.y+s.h:s.y;
+        addH(bx+Math.abs(s.w)-6,by+Math.abs(s.h)-6,'br',s.id,'#1565c0');
+      }
+      if(sel&&s.type==='arrow'){
+        addC(s.x1,s.y1,'start',s.id,'#4caf50');
+        addC(s.x2,s.y2,'end',s.id,'#1565c0');
+      }
+    }
+  });
+}
+function addH(x,y,t,id,f){
+  const h=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  h.setAttribute('x',x);h.setAttribute('y',y);h.setAttribute('width',12);h.setAttribute('height',12);
+  h.setAttribute('rx',2);h.setAttribute('fill',f);h.setAttribute('stroke','#fff');h.setAttribute('stroke-width',1.5);
+  h.classList.add('handle');h.dataset.resize=t;h.dataset.id=id;svgEl.appendChild(h);
+}
+function addC(cx,cy,t,id,f){
+  const h=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  h.setAttribute('cx',cx);h.setAttribute('cy',cy);h.setAttribute('r',7);
+  h.setAttribute('fill',f);h.setAttribute('stroke','#fff');h.setAttribute('stroke-width',1.5);
+  h.classList.add('handle');h.dataset.resize=t;h.dataset.id=id;svgEl.appendChild(h);
+}
+
+function getP(e){
+  const r=wrapper.getBoundingClientRect(),src=e.touches?e.touches[0]:e;
+  return{x:src.clientX-r.left,y:src.clientY-r.top};
+}
+svgEl.addEventListener('mousedown',onDown);
+svgEl.addEventListener('touchstart',onDown,{passive:false});
+function onDown(e){
+  e.preventDefault();const p=getP(e);const t=e.target;
+  if(t.dataset.resize){
+    resizing=true;resizeHandle=t.dataset.resize;
+    selectedId=parseInt(t.dataset.id);
+    dragStartShape={...shapes.find(s=>s.id===selectedId)};
+    startX=p.x;startY=p.y;return;
+  }
+  if(currentTool==='select'){
+    if(t.dataset.id){
+      selectedId=parseInt(t.dataset.id);
+      const s=shapes.find(s=>s.id===selectedId);
+      dragStartShape={...s};
+      dragOffX=p.x-(s.type==='arrow'?s.x1:s.x);
+      dragOffY=p.y-(s.type==='arrow'?s.y1:s.y);
+      drawing=true;
+    }else{selectedId=null;}
+    redraw();return;
+  }
+  history.push(JSON.stringify(shapes));
+  drawing=true;startX=p.x;startY=p.y;
+  const id=nextId++;
+  const color=document.getElementById('shape-color').value;
+  const sw=parseInt(document.getElementById('stroke-width').value);
+  if(currentTool==='rect'||currentTool==='circle')
+    shapes.push({id,type:currentTool,color,sw,x:startX,y:startY,w:0,h:0});
+  else if(currentTool==='arrow')
+    shapes.push({id,type:'arrow',color,sw,x1:startX,y1:startY,x2:startX,y2:startY});
+  selectedId=id;redraw();
+}
+document.addEventListener('mousemove',onMove);
+document.addEventListener('touchmove',onMove,{passive:false});
+function onMove(e){
+  if(!drawing&&!resizing)return;e.preventDefault();const p=getP(e);
+  if(resizing){
+    const s=shapes.find(s=>s.id===selectedId);if(!s)return;
+    const dx=p.x-startX,dy=p.y-startY;
+    if(resizeHandle==='br'){s.w=dragStartShape.w+dx;s.h=dragStartShape.h+dy;}
+    else if(resizeHandle==='end'){s.x2=p.x;s.y2=p.y;}
+    else if(resizeHandle==='start'){s.x1=p.x;s.y1=p.y;}
+    redraw();return;
+  }
+  if(currentTool==='select'){
+    const s=shapes.find(s=>s.id===selectedId);if(!s)return;
+    if(s.type==='arrow'){
+      const dx=p.x-dragOffX-dragStartShape.x1,dy=p.y-dragOffY-dragStartShape.y1;
+      s.x1=dragStartShape.x1+dx;s.y1=dragStartShape.y1+dy;
+      s.x2=dragStartShape.x2+dx;s.y2=dragStartShape.y2+dy;
+    }else{s.x=p.x-dragOffX;s.y=p.y-dragOffY;}
+    redraw();return;
+  }
+  const s=shapes[shapes.length-1];if(!s)return;
+  if(s.type==='rect'||s.type==='circle'){s.w=p.x-startX;s.h=p.y-startY;}
+  else if(s.type==='arrow'){s.x2=p.x;s.y2=p.y;}
+  redraw();
+}
+document.addEventListener('mouseup',onUp);
+document.addEventListener('touchend',onUp);
+function onUp(){
+  if(drawing&&currentTool!=='select'){
+    const s=shapes[shapes.length-1];
+    if(s&&s.type!=='arrow'&&Math.abs(s.w)<4&&Math.abs(s.h)<4){shapes.pop();history.pop();selectedId=null;}
+    if(s&&s.type==='arrow'){const dx=s.x2-s.x1,dy=s.y2-s.y1;if(Math.sqrt(dx*dx+dy*dy)<8){shapes.pop();history.pop();selectedId=null;}}
+  }
+  drawing=false;resizing=false;dragStartShape=null;redraw();
+}
+function deshacer(){if(!history.length)return;shapes=JSON.parse(history.pop());selectedId=null;redraw();}
+function eliminarSeleccionada(){if(selectedId===null)return;history.push(JSON.stringify(shapes));shapes=shapes.filter(s=>s.id!==selectedId);selectedId=null;redraw();}
+function limpiarFormas(){if(!shapes.length)return;history.push(JSON.stringify(shapes));shapes=[];selectedId=null;redraw();}
+
+// ═══════════════════════════════════════════════════
+//  EXPORT PNG ALTA CALIDAD — canvas nativo
+// ═══════════════════════════════════════════════════
+function exportarCanvas(){
+  const scale  = parseFloat(document.getElementById('export-scale').value);
+  const altMax = parseInt(document.getElementById('img-height').value);
+  const fsize  = parseInt(document.getElementById('font-size').value);
+  const cols   = parseInt(document.getElementById('cols-base').value);
+  const texto  = (document.getElementById('input-texto').value.trim()||'TEXTO').toUpperCase();
+
+  if(!dataURLs.length){alert('Cargá imágenes primero.');return;}
+
+  const displayW = wrapper.clientWidth;
+  const rows = buildLayout(dataURLs, cols, altMax, displayW);
+  const totalH = rows.reduce((a,r)=>a+r._h,0) + rows.length; // +1px borde por fila
+
+  const CW = Math.round(displayW * scale);
+  const CH = Math.round(totalH  * scale);
+  const S  = scale;
+
+  const canvas = document.createElement('canvas');
+  canvas.width=CW; canvas.height=CH;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,CW,CH);
+
+  const BORDER=1.5;
+  let curY=0;
+
+  rows.forEach(cells=>{
+    const rH    = cells._h;
+    const nCols = cells.length;
+    const cellW = displayW / nCols;
+
+    cells.forEach((cell,ci)=>{
+      const cx = ci * cellW;
+      if(cell.type==='img' && cell.entry && cell.entry.img){
+        // object-fit: contain — sin recorte
+        const im=cell.entry.img;
+        const ratio=im.naturalWidth/im.naturalHeight;
+        const boxRatio=cellW/rH;
+        let dw,dh,ox,oy;
+        if(ratio>boxRatio){ dw=cellW*S; dh=dw/ratio; ox=cx*S; oy=curY*S+(rH*S-dh)/2; }
+        else               { dh=rH*S; dw=dh*ratio; oy=curY*S; ox=cx*S+(cellW*S-dw)/2; }
+        ctx.drawImage(im,0,0,im.naturalWidth,im.naturalHeight,ox,oy,dw,dh);
+      } else if(cell.type==='text'){
+        // celda de texto
+        ctx.fillStyle='#ffffff';
+        ctx.fillRect(cx*S,curY*S,cellW*S,rH*S);
+        ctx.fillStyle='#d32f2f';
+        ctx.font=`bold ${fsize*S}px Arial`;
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        // wrap simple si el texto es largo
+        const maxW = cellW*S*0.85;
+        wrapText(ctx, texto, (cx+cellW/2)*S, (curY+rH/2)*S, maxW, fsize*S*1.2);
+      }
+      // borde derecho
+      if(ci<nCols-1){
+        ctx.strokeStyle='#cccccc'; ctx.lineWidth=BORDER*S;
+        ctx.beginPath();
+        ctx.moveTo((cx+cellW)*S, curY*S);
+        ctx.lineTo((cx+cellW)*S, (curY+rH)*S);
+        ctx.stroke();
+      }
+    });
+    // borde inferior de fila
+    ctx.strokeStyle='#cccccc'; ctx.lineWidth=BORDER*S;
+    ctx.beginPath();
+    ctx.moveTo(0,(curY+rH)*S); ctx.lineTo(CW,(curY+rH)*S); ctx.stroke();
+
+    curY += rH + BORDER/S;
+  });
+
+  // Dibujar formas SVG encima
+  drawShapesOnCanvas(ctx,S);
+
+  canvas.toBlob(blob=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='imagen_alta_calidad.png';
+    a.click();
+    document.getElementById('info').textContent=`✔ PNG descargado — ${CW}×${CH}px`;
+  },'image/png',1.0);
+}
+
+function wrapText(ctx, text, x, y, maxW, lineH){
+  const words=text.split(' ');
+  const lines=[];
+  let line='';
+  words.forEach(w=>{
+    const test=line?line+' '+w:w;
+    if(ctx.measureText(test).width>maxW&&line){lines.push(line);line=w;}
+    else{line=test;}
+  });
+  if(line) lines.push(line);
+  const startY=y-(lines.length-1)*lineH/2;
+  lines.forEach((l,i)=>ctx.fillText(l,x,startY+i*lineH));
+}
+
+function drawShapesOnCanvas(ctx,S){
+  const prev=selectedId;selectedId=null;
+  shapes.forEach(s=>{
+    ctx.save();
+    ctx.strokeStyle=s.color;ctx.lineWidth=s.sw*S;ctx.lineCap='round';
+    if(s.type==='rect'){
+      const x=s.w<0?s.x+s.w:s.x,y=s.h<0?s.y+s.h:s.y;
+      ctx.strokeRect(x*S,y*S,Math.abs(s.w)*S,Math.abs(s.h)*S);
+    }else if(s.type==='circle'){
+      ctx.beginPath();
+      ctx.ellipse((s.x+s.w/2)*S,(s.y+s.h/2)*S,Math.abs(s.w/2)*S,Math.abs(s.h/2)*S,0,0,Math.PI*2);
+      ctx.stroke();
+    }else if(s.type==='arrow'){
+      const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.sqrt(dx*dx+dy*dy);
+      if(len<2){ctx.restore();return;}
+      const ux=dx/len,uy=dy/len,hw=Math.max(10,s.sw*4)*S;
+      const hx=s.x2*S-ux*hw,hy=s.y2*S-uy*hw;
+      ctx.beginPath();ctx.moveTo(s.x1*S,s.y1*S);ctx.lineTo(hx,hy);ctx.stroke();
+      const ang=Math.atan2(dy,dx),perp=Math.PI/6;
+      ctx.fillStyle=s.color;ctx.beginPath();
+      ctx.moveTo(s.x2*S,s.y2*S);
+      ctx.lineTo(s.x2*S-Math.cos(ang-perp)*hw,s.y2*S-Math.sin(ang-perp)*hw);
+      ctx.lineTo(s.x2*S-Math.cos(ang+perp)*hw,s.y2*S-Math.sin(ang+perp)*hw);
+      ctx.closePath();ctx.fill();
+    }
+    ctx.restore();
+  });
+  selectedId=prev;
+}
+
+// ═══════════════════════════════════════════════════
+//  DESCARGAR HTML
+// ═══════════════════════════════════════════════════
+function descargarHTML(){
+  const texto2=(document.getElementById('input-texto').value.trim()||'TEXTO').toUpperCase();
+  const altMax=parseInt(document.getElementById('img-height').value);
+  const fsize=document.getElementById('font-size').value;
+  const cols=parseInt(document.getElementById('cols-base').value);
+  const W=wrapper.clientWidth||900;
+  const entries=dataURLs.length>0?dataURLs:makePlaceholders(cols*3);
+  const rows=buildLayout(entries,cols,altMax,W);
+
+  const prev=selectedId;selectedId=null;redraw();
+  const svgStr=new XMLSerializer().serializeToString(svgEl);
+  selectedId=prev;redraw();
+
+  let rowsHTML='';
+  rows.forEach(cells=>{
+    const rH=cells._h;
+    const nc=cells.length;
+    let cellsHTML='';
+    cells.forEach((cell,ci)=>{
+      const br=ci<nc-1?'border-right:1.5px solid #ccc;':'';
+      if(cell.type==='img'&&cell.entry&&cell.entry.url){
+        cellsHTML+=`<div style="flex:1;${br}height:${rH}px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;">
+          <img src="${cell.entry.url}" style="max-width:100%;max-height:100%;object-fit:contain;display:block;"/></div>`;
+      }else if(cell.type==='img'){
+        cellsHTML+=`<div style="flex:1;${br}height:${rH}px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;font-family:Arial,sans-serif;">${cell.entry&&cell.entry.label?cell.entry.label:'IMG'}</div>`;
+      }else{
+        cellsHTML+=`<div style="flex:1;${br}height:${rH}px;display:flex;align-items:center;justify-content:center;padding:10px;">
+          <span style="font-family:Arial,sans-serif;font-weight:700;color:#d32f2f;font-size:${fsize}px;text-transform:uppercase;letter-spacing:.04em;text-align:center;">${texto2}</span></div>`;
+      }
+    });
+    rowsHTML+=`<div style="display:flex;border-bottom:1.5px solid #ccc;">${cellsHTML}</div>`;
+  });
+
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Imagen generada</title>
+<style>body{margin:0;padding:20px;background:#d0d0d0;display:flex;justify-content:center;}
+#w{position:relative;background:#fff;border:1.5px solid #bbb;border-radius:4px;overflow:hidden;max-width:1000px;width:100%;}
+#o{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}</style></head><body>
+<div id="w">${rowsHTML}<div id="o">${svgStr}</div></div></body></html>`;
+
+  const blob=new Blob([html],{type:'text/html'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download='imagen_final.html';a.click();
+}
+
+window.addEventListener('resize',()=>actualizar());
+actualizar();
+</script>
+</body>
+</html>
