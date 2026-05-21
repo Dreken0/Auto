@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Generador de Imagen</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, sans-serif;
+    background: #e8e8e8;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 20px;
+    gap: 24px;
+  }
+
+  /* ── PANEL DE CONTROLES ── */
+  #panel {
+    background: #fff;
+    border-radius: 10px;
+    padding: 24px 28px;
+    width: 100%;
+    max-width: 700px;
+    box-shadow: 0 2px 12px #0002;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  #panel h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 4px;
+  }
+
+  .row {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    min-width: 160px;
+  }
+
+  .field label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #666;
+  }
+
+  .field input[type="text"] {
+    border: 1.5px solid #ddd;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .field input[type="text"]:focus { border-color: #d32f2f; }
+
+  .field input[type="file"] {
+    border: 2px dashed #ccc;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    background: #fafafa;
+    color: #555;
+  }
+
+  .field input[type="range"] {
+    width: 100%;
+    accent-color: #d32f2f;
+    cursor: pointer;
+  }
+
+  .range-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .range-row span {
+    font-size: 13px;
+    font-weight: 600;
+    color: #d32f2f;
+    min-width: 28px;
+  }
+
+  .btn {
+    padding: 10px 22px;
+    border-radius: 6px;
+    border: none;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    white-space: nowrap;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-red  { background: #d32f2f; color: #fff; }
+  .btn-dark { background: #222; color: #fff; }
+  .btn-gray { background: #eee; color: #333; border: 1.5px solid #ccc; }
+
+  #info {
+    font-size: 12px;
+    color: #888;
+    min-height: 16px;
+  }
+
+  /* ── RESULTADO ── */
+  #result-area {
+    width: 100%;
+    max-width: 900px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* LA CAJA QUE SE CAPTURA */
+  #capture-box {
+    background: #fff;
+    border: 2px solid #ccc;
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  /* Fila de imágenes */
+  #img-row {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-bottom: 2px solid #ccc;
+  }
+
+  .img-cell {
+    flex: 1;
+    border-right: 2px solid #ccc;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+  }
+
+  .img-cell:last-child { border-right: none; }
+
+  .img-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  /* Zona del texto rojo */
+  #text-zone {
+    text-align: center;
+    padding: 20px 16px;
+    background: #fff;
+  }
+
+  #red-label {
+    font-family: Arial, sans-serif;
+    font-weight: 700;
+    color: #d32f2f;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    line-height: 1.1;
+  }
+
+  /* Botones de descarga */
+  #dl-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- CONTROLES -->
+<div id="panel">
+  <h2>⚙ Configuración</h2>
+
+  <div class="row">
+    <div class="field">
+      <label>Imágenes (seleccioná varias)</label>
+      <input type="file" id="input-images" accept="image/*" multiple />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Texto en rojo (mayúsculas automáticas)</label>
+      <input type="text" id="input-texto" placeholder="Ej: Bienvenidos al curso"
+             oninput="actualizar()"
+             onkeydown="if(event.key==='Enter') actualizar()" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Altura de imágenes (px)</label>
+      <div class="range-row">
+        <input type="range" id="img-height" min="100" max="500" value="220" step="10"
+               oninput="document.getElementById('height-val').textContent=this.value+'px'; actualizar()" />
+        <span id="height-val">220px</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Tamaño del texto</label>
+      <div class="range-row">
+        <input type="range" id="font-size" min="18" max="90" value="42" step="2"
+               oninput="document.getElementById('font-val').textContent=this.value+'px'; actualizar()" />
+        <span id="font-val">42px</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="btn btn-red" onclick="actualizar()">▶ Generar</button>
+    <button class="btn btn-dark" onclick="capturarPNG()">📷 Descargar PNG</button>
+    <button class="btn btn-gray" onclick="descargarHTML()">⬇ Descargar HTML</button>
+  </div>
+
+  <p id="info">Seleccioná imágenes y hacé clic en Generar.</p>
+</div>
+
+<!-- RESULTADO -->
+<div id="result-area">
+  <div id="capture-box">
+    <div id="img-row">
+      <!-- imágenes van acá -->
+    </div>
+    <div id="text-zone">
+      <div id="red-label" style="font-size:42px;">TEXTO</div>
+    </div>
+  </div>
+
+  <div id="dl-row">
+    <button class="btn btn-dark" onclick="capturarPNG()">📷 Descargar como PNG</button>
+    <button class="btn btn-gray" onclick="descargarHTML()">⬇ Descargar como HTML</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+  let dataURLs = [];
+
+  document.getElementById('input-images').addEventListener('change', function () {
+    dataURLs = [];
+    const files = Array.from(this.files);
+    if (!files.length) return;
+    let done = 0;
+    files.forEach((f, i) => {
+      const r = new FileReader();
+      r.onload = e => {
+        dataURLs[i] = e.target.result;
+        if (++done === files.length) {
+          document.getElementById('info').textContent = `✔ ${files.length} imagen(es) cargada(s). Hacé clic en Generar.`;
+          actualizar();
+        }
+      };
+      r.readAsDataURL(f);
+    });
+  });
+
+  function actualizar() {
+    const texto  = document.getElementById('input-texto').value.trim();
+    const altura = document.getElementById('img-height').value + 'px';
+    const fsize  = document.getElementById('font-size').value + 'px';
+
+    // Texto rojo
+    document.getElementById('red-label').style.fontSize = fsize;
+    document.getElementById('red-label').textContent = texto ? texto.toUpperCase() : 'TEXTO';
+
+    // Fila de imágenes
+    const row = document.getElementById('img-row');
+    row.innerHTML = '';
+    row.style.height = altura;
+
+    if (dataURLs.length === 0) {
+      // placeholder de ejemplo
+      ['IMG1','IMG2','IMG3'].forEach((lbl, i) => {
+        const borders = ['#000','#d32f2f','#f0c000'];
+        const cell = document.createElement('div');
+        cell.className = 'img-cell';
+        cell.style.border = `2px solid ${borders[i]}`;
+        cell.style.fontSize = '22px';
+        cell.style.fontWeight = '700';
+        cell.style.color = '#d32f2f';
+        cell.style.height = altura;
+        cell.textContent = lbl;
+        row.appendChild(cell);
+      });
+      return;
+    }
+
+    dataURLs.forEach((url, i) => {
+      const cell = document.createElement('div');
+      cell.className = 'img-cell';
+      cell.style.height = altura;
+      const img = document.createElement('img');
+      img.src = url;
+      cell.appendChild(img);
+      row.appendChild(cell);
+    });
+  }
+
+  function capturarPNG() {
+    const box = document.getElementById('capture-box');
+    document.getElementById('info').textContent = 'Capturando...';
+    html2canvas(box, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(canvas => {
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = 'imagen_final.png';
+      a.click();
+      document.getElementById('info').textContent = '✔ PNG descargado.';
+    });
+  }
+
+  function descargarHTML() {
+    const texto = document.getElementById('input-texto').value.trim().toUpperCase() || 'TEXTO';
+    const altura = document.getElementById('img-height').value;
+    const fsize  = document.getElementById('font-size').value;
+
+    const celdas = dataURLs.length > 0
+      ? dataURLs.map(url =>
+          `<div style="flex:1;border-right:2px solid #ccc;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+            <img src="${url}" style="width:100%;height:100%;object-fit:contain;" />
+          </div>`
+        ).join('\n')
+      : ['IMG1','IMG2','IMG3'].map((l,i)=>{
+          const borders=['#000','#d32f2f','#f0c000'];
+          return `<div style="flex:1;border-right:2px solid ${borders[i]};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#d32f2f;">${l}</div>`;
+        }).join('\n');
+
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Imagen generada</title>
+<style>body{margin:0;padding:20px;background:#e8e8e8;display:flex;justify-content:center;}
+#box{background:#fff;border:2px solid #ccc;border-radius:6px;overflow:hidden;display:flex;flex-direction:column;max-width:900px;width:100%;}
+#row{display:flex;height:${altura}px;border-bottom:2px solid #ccc;}
+#row div:last-child{border-right:none!important;}
+#txt{text-align:center;padding:20px;font-family:Arial,sans-serif;font-size:${fsize}px;font-weight:700;color:#d32f2f;text-transform:uppercase;letter-spacing:.04em;}
+</style></head><body>
+<div id="box">
+  <div id="row">
+${celdas}
+  </div>
+  <div id="txt">${texto}</div>
+</div>
+</body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'imagen_final.html';
+    a.click();
+  }
+</script>
+</body>
+</html>

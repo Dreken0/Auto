@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Generador de Imagen</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, sans-serif;
+    background: #e8e8e8;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 20px;
+    gap: 20px;
+  }
+
+  /* PANEL */
+  #panel {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px 24px;
+    width: 100%;
+    max-width: 900px;
+    box-shadow: 0 2px 12px #0002;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  #panel h2 { font-size: 15px; font-weight: 700; color: #222; }
+
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 140px; }
+  .field label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #666; }
+  .field input[type="text"] {
+    border: 1.5px solid #ddd; border-radius: 6px; padding: 7px 10px;
+    font-size: 14px; font-family: inherit; outline: none;
+  }
+  .field input[type="text"]:focus { border-color: #d32f2f; }
+  .field input[type="file"] {
+    border: 2px dashed #ccc; border-radius: 6px; padding: 7px 10px;
+    font-size: 13px; cursor: pointer; background: #fafafa; color: #555;
+  }
+  .range-row { display: flex; align-items: center; gap: 8px; }
+  .range-row input { flex: 1; accent-color: #d32f2f; cursor: pointer; }
+  .range-row span { font-size: 13px; font-weight: 700; color: #d32f2f; min-width: 34px; }
+
+  .btn {
+    padding: 8px 16px; border-radius: 6px; border: none;
+    font-family: inherit; font-size: 13px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: opacity .15s, transform .1s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-red  { background: #d32f2f; color: #fff; }
+  .btn-dark { background: #222; color: #fff; }
+  .btn-gray { background: #eee; color: #333; border: 1.5px solid #ccc; }
+  .btn-blue { background: #1565c0; color: #fff; }
+  .btn-tool { background: #fff; border: 2px solid #ccc; color: #444; font-size: 18px; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .btn-tool:hover { border-color: #1565c0; background: #e8f0fe; }
+  .btn-tool.active { border-color: #1565c0; background: #1565c0; color: #fff; }
+
+  #info { font-size: 12px; color: #888; min-height: 16px; }
+
+  /* TOOLBAR DE DIBUJO */
+  #draw-toolbar {
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  #draw-toolbar label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #666; letter-spacing: .07em; }
+
+  .sep { width: 1px; height: 30px; background: #ddd; }
+
+  /* ZONA DE RESULTADO */
+  #result-area {
+    width: 100%;
+    max-width: 900px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* CONTENEDOR RELATIVO para imágenes + SVG superpuesto */
+  #canvas-wrapper {
+    position: relative;
+    width: 100%;
+    background: #fff;
+    border: 2px solid #ccc;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  /* Caja de imágenes + texto */
+  #capture-box {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  #img-row {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-bottom: 2px solid #ccc;
+  }
+
+  .img-cell {
+    flex: 1;
+    border-right: 2px solid #ccc;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+  }
+  .img-cell:last-child { border-right: none; }
+  .img-cell img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  #text-zone { text-align: center; padding: 18px 16px; background: #fff; }
+  #red-label {
+    font-family: Arial, sans-serif;
+    font-weight: 700;
+    color: #d32f2f;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    line-height: 1.1;
+  }
+
+  /* SVG superpuesto */
+  #draw-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; /* se activa sólo en modo dibujo/selección */
+  }
+  #draw-svg.active { pointer-events: all; cursor: crosshair; }
+  #draw-svg.select-mode { cursor: default; }
+
+  #dl-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+  /* Handles de resize */
+  .handle { cursor: nwse-resize; }
+</style>
+</head>
+<body>
+
+<!-- PANEL PRINCIPAL -->
+<div id="panel">
+  <h2>⚙ Configuración</h2>
+  <div class="row">
+    <div class="field">
+      <label>Imágenes</label>
+      <input type="file" id="input-images" accept="image/*" multiple />
+    </div>
+    <div class="field">
+      <label>Texto en rojo</label>
+      <input type="text" id="input-texto" placeholder="Ej: Bienvenidos al curso"
+             oninput="actualizar()" onkeydown="if(event.key==='Enter') actualizar()" />
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label>Altura imágenes</label>
+      <div class="range-row">
+        <input type="range" id="img-height" min="80" max="500" value="220" step="10"
+               oninput="document.getElementById('height-val').textContent=this.value+'px'; actualizar()" />
+        <span id="height-val">220px</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Tamaño texto</label>
+      <div class="range-row">
+        <input type="range" id="font-size" min="18" max="90" value="42" step="2"
+               oninput="document.getElementById('font-val').textContent=this.value+'px'; actualizar()" />
+        <span id="font-val">42px</span>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn btn-red" onclick="actualizar()">▶ Generar</button>
+    <button class="btn btn-dark" onclick="capturarPNG()">📷 PNG</button>
+    <button class="btn btn-gray" onclick="descargarHTML()">⬇ HTML</button>
+  </div>
+  <p id="info">Seleccioná imágenes y hacé clic en Generar.</p>
+
+  <!-- TOOLBAR DIBUJO -->
+  <div id="draw-toolbar">
+    <label>Herramientas:</label>
+    <button class="btn-tool" id="tool-select" title="Seleccionar / mover" onclick="setTool('select')">↖</button>
+    <button class="btn-tool" id="tool-rect"   title="Rectángulo"          onclick="setTool('rect')">▭</button>
+    <button class="btn-tool" id="tool-circle" title="Círculo/Elipse"      onclick="setTool('circle')">◯</button>
+    <button class="btn-tool" id="tool-arrow"  title="Flecha"              onclick="setTool('arrow')">➜</button>
+
+    <div class="sep"></div>
+    <label>Color:</label>
+    <input type="color" id="shape-color" value="#d32f2f" title="Color del borde/línea"
+           style="width:32px;height:32px;border:none;background:none;cursor:pointer;padding:0;" />
+
+    <label>Grosor:</label>
+    <div class="range-row" style="min-width:100px">
+      <input type="range" id="stroke-width" min="1" max="12" value="3" step="1"
+             oninput="document.getElementById('sw-val').textContent=this.value" />
+      <span id="sw-val">3</span>
+    </div>
+
+    <div class="sep"></div>
+    <button class="btn btn-gray" onclick="eliminarSeleccionada()" title="Eliminar forma seleccionada">🗑 Borrar</button>
+    <button class="btn btn-gray" onclick="limpiarFormas()" title="Borrar todas las formas">✕ Limpiar todo</button>
+  </div>
+</div>
+
+<!-- RESULTADO -->
+<div id="result-area">
+  <div id="canvas-wrapper">
+    <div id="capture-box">
+      <div id="img-row"></div>
+      <div id="text-zone">
+        <div id="red-label" style="font-size:42px;">TEXTO</div>
+      </div>
+    </div>
+    <!-- SVG para dibujo encima -->
+    <svg id="draw-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div id="dl-row">
+    <button class="btn btn-dark" onclick="capturarPNG()">📷 Descargar PNG</button>
+    <button class="btn btn-gray" onclick="descargarHTML()">⬇ Descargar HTML</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+// ── ESTADO ──
+let dataURLs = [];
+let currentTool = 'select';
+let shapes = []; // {id, type, color, sw, x,y,w,h} o {x1,y1,x2,y2} para arrow
+let selectedId = null;
+let drawing = false;
+let startX, startY;
+let dragOffX, dragOffY;
+let dragStartShape = null;
+let resizing = false;
+let resizeHandle = null; // 'br'
+let nextId = 1;
+
+const svg = document.getElementById('draw-svg');
+const wrapper = document.getElementById('canvas-wrapper');
+
+// ── IMÁGENES ──
+document.getElementById('input-images').addEventListener('change', function () {
+  dataURLs = [];
+  const files = Array.from(this.files);
+  if (!files.length) return;
+  let done = 0;
+  files.forEach((f, i) => {
+    const r = new FileReader();
+    r.onload = e => {
+      dataURLs[i] = e.target.result;
+      if (++done === files.length) {
+        document.getElementById('info').textContent = `✔ ${files.length} imagen(es) cargada(s).`;
+        actualizar();
+      }
+    };
+    r.readAsDataURL(f);
+  });
+});
+
+function actualizar() {
+  const texto  = document.getElementById('input-texto').value.trim();
+  const altura = document.getElementById('img-height').value + 'px';
+  const fsize  = document.getElementById('font-size').value + 'px';
+
+  document.getElementById('red-label').style.fontSize = fsize;
+  document.getElementById('red-label').textContent = texto ? texto.toUpperCase() : 'TEXTO';
+
+  const row = document.getElementById('img-row');
+  row.innerHTML = '';
+  row.style.height = altura;
+
+  if (dataURLs.length === 0) {
+    ['IMG1','IMG2','IMG3'].forEach((lbl, i) => {
+      const borders = ['#000','#d32f2f','#f0c000'];
+      const cell = document.createElement('div');
+      cell.className = 'img-cell';
+      cell.style.border = `2px solid ${borders[i]}`;
+      cell.style.fontSize = '22px';
+      cell.style.fontWeight = '700';
+      cell.style.color = '#d32f2f';
+      cell.style.height = altura;
+      cell.textContent = lbl;
+      row.appendChild(cell);
+    });
+  } else {
+    dataURLs.forEach(url => {
+      const cell = document.createElement('div');
+      cell.className = 'img-cell';
+      cell.style.height = altura;
+      const img = document.createElement('img');
+      img.src = url;
+      cell.appendChild(img);
+      row.appendChild(cell);
+    });
+  }
+  redraw();
+}
+
+// ── HERRAMIENTA ──
+function setTool(t) {
+  currentTool = t;
+  document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
+  document.getElementById('tool-' + t).classList.add('active');
+  svg.classList.toggle('active', true);
+  svg.classList.toggle('select-mode', t === 'select');
+  if (t !== 'select') selectedId = null;
+  redraw();
+}
+// inicializar
+setTool('select');
+
+// ── HELPERS ──
+function svgPt(e) {
+  const r = wrapper.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+  const cy = (e.touches ? e.touches[0].clientY : e.clientY);
+  return { x: cx - r.left, y: cy - r.top };
+}
+
+function shapeColor() { return document.getElementById('shape-color').value; }
+function strokeW()    { return parseInt(document.getElementById('stroke-width').value); }
+
+// ── DIBUJO SVG ──
+function redraw() {
+  // Ajustar tamaño SVG al wrapper
+  const w = wrapper.offsetWidth;
+  const h = wrapper.offsetHeight;
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+
+  // Limpiar
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // Defs para flechas
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  shapes.forEach(s => {
+    if (s.type !== 'arrow') return;
+    const mid = document.createElementNS('http://www.w3.org/2000/svg','marker');
+    mid.setAttribute('id', 'arr-' + s.id);
+    mid.setAttribute('markerWidth','10');
+    mid.setAttribute('markerHeight','7');
+    mid.setAttribute('refX','10');
+    mid.setAttribute('refY','3.5');
+    mid.setAttribute('orient','auto');
+    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points','0 0, 10 3.5, 0 7');
+    poly.setAttribute('fill', s.color);
+    mid.appendChild(poly);
+    defs.appendChild(mid);
+  });
+  svg.appendChild(defs);
+
+  shapes.forEach(s => {
+    const sel = s.id === selectedId;
+    let el;
+
+    if (s.type === 'rect') {
+      el = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      el.setAttribute('x', s.x); el.setAttribute('y', s.y);
+      el.setAttribute('width', Math.abs(s.w)); el.setAttribute('height', Math.abs(s.h));
+      el.setAttribute('rx', 3);
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', s.color);
+      el.setAttribute('stroke-width', s.sw);
+      if (sel) el.setAttribute('stroke-dasharray', '6 3');
+    } else if (s.type === 'circle') {
+      el = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+      const cx = s.x + s.w/2, cy = s.y + s.h/2;
+      el.setAttribute('cx', cx); el.setAttribute('cy', cy);
+      el.setAttribute('rx', Math.abs(s.w/2)); el.setAttribute('ry', Math.abs(s.h/2));
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', s.color);
+      el.setAttribute('stroke-width', s.sw);
+      if (sel) el.setAttribute('stroke-dasharray', '6 3');
+    } else if (s.type === 'arrow') {
+      el = document.createElementNS('http://www.w3.org/2000/svg','line');
+      el.setAttribute('x1', s.x1); el.setAttribute('y1', s.y1);
+      el.setAttribute('x2', s.x2); el.setAttribute('y2', s.y2);
+      el.setAttribute('stroke', s.color);
+      el.setAttribute('stroke-width', s.sw);
+      el.setAttribute('marker-end', `url(#arr-${s.id})`);
+      if (sel) el.setAttribute('stroke-dasharray', '6 3');
+    }
+
+    if (el) {
+      el.dataset.id = s.id;
+      el.style.cursor = currentTool === 'select' ? 'move' : 'crosshair';
+      svg.appendChild(el);
+
+      // Handle de resize (esquina inferior derecha) — solo para rect y circle
+      if (sel && s.type !== 'arrow') {
+        const rx = s.x + s.w - 5, ry = s.y + s.h - 5;
+        const hr = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        hr.setAttribute('x', rx); hr.setAttribute('y', ry);
+        hr.setAttribute('width', 10); hr.setAttribute('height', 10);
+        hr.setAttribute('rx', 2);
+        hr.setAttribute('fill', '#1565c0');
+        hr.setAttribute('stroke', '#fff');
+        hr.setAttribute('stroke-width', 1.5);
+        hr.classList.add('handle');
+        hr.dataset.resize = 'br';
+        hr.dataset.id = s.id;
+        svg.appendChild(hr);
+      }
+      // Para arrows: handle en x2,y2
+      if (sel && s.type === 'arrow') {
+        const hr2 = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        hr2.setAttribute('cx', s.x2); hr2.setAttribute('cy', s.y2);
+        hr2.setAttribute('r', 7);
+        hr2.setAttribute('fill', '#1565c0');
+        hr2.setAttribute('stroke', '#fff');
+        hr2.setAttribute('stroke-width', 1.5);
+        hr2.classList.add('handle');
+        hr2.dataset.resize = 'end';
+        hr2.dataset.id = s.id;
+        svg.appendChild(hr2);
+        // handle inicio
+        const hr1 = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        hr1.setAttribute('cx', s.x1); hr1.setAttribute('cy', s.y1);
+        hr1.setAttribute('r', 7);
+        hr1.setAttribute('fill', '#4caf50');
+        hr1.setAttribute('stroke', '#fff');
+        hr1.setAttribute('stroke-width', 1.5);
+        hr1.classList.add('handle');
+        hr1.dataset.resize = 'start';
+        hr1.dataset.id = s.id;
+        svg.appendChild(hr1);
+      }
+    }
+  });
+}
+
+// ── EVENTOS MOUSE / TOUCH ──
+function getPointer(e) {
+  if (e.touches) return svgPt(e.touches[0]);
+  return svgPt(e);
+}
+
+svg.addEventListener('mousedown', onDown);
+svg.addEventListener('touchstart', onDown, { passive: false });
+
+function onDown(e) {
+  e.preventDefault();
+  const p = getPointer(e);
+
+  // Click en handle de resize?
+  const target = e.target || e.srcElement;
+  if (target.dataset.resize) {
+    resizing = true;
+    resizeHandle = target.dataset.resize;
+    selectedId = parseInt(target.dataset.id);
+    dragStartShape = { ...shapes.find(s => s.id === selectedId) };
+    startX = p.x; startY = p.y;
+    return;
+  }
+
+  if (currentTool === 'select') {
+    // Click en forma?
+    if (target.dataset.id) {
+      selectedId = parseInt(target.dataset.id);
+      const s = shapes.find(s => s.id === selectedId);
+      dragStartShape = { ...s };
+      dragOffX = p.x - (s.type === 'arrow' ? s.x1 : s.x);
+      dragOffY = p.y - (s.type === 'arrow' ? s.y1 : s.y);
+      drawing = true; // usamos drawing para "dragging"
+    } else {
+      selectedId = null;
+    }
+    redraw();
+    return;
+  }
+
+  // Dibujar nueva forma
+  drawing = true;
+  startX = p.x; startY = p.y;
+  const color = shapeColor(), sw = strokeW();
+  const id = nextId++;
+
+  if (currentTool === 'rect' || currentTool === 'circle') {
+    shapes.push({ id, type: currentTool, color, sw, x: startX, y: startY, w: 0, h: 0 });
+  } else if (currentTool === 'arrow') {
+    shapes.push({ id, type: 'arrow', color, sw, x1: startX, y1: startY, x2: startX, y2: startY });
+  }
+  selectedId = id;
+  redraw();
+}
+
+document.addEventListener('mousemove', onMove);
+document.addEventListener('touchmove', onMove, { passive: false });
+
+function onMove(e) {
+  if (!drawing && !resizing) return;
+  e.preventDefault();
+  const p = getPointer(e);
+
+  if (resizing) {
+    const s = shapes.find(s => s.id === selectedId);
+    if (!s) return;
+    const dx = p.x - startX, dy = p.y - startY;
+    if (resizeHandle === 'br') {
+      s.w = dragStartShape.w + dx;
+      s.h = dragStartShape.h + dy;
+    } else if (resizeHandle === 'end') {
+      s.x2 = p.x; s.y2 = p.y;
+    } else if (resizeHandle === 'start') {
+      s.x1 = p.x; s.y1 = p.y;
+    }
+    redraw(); return;
+  }
+
+  if (currentTool === 'select') {
+    // mover forma
+    const s = shapes.find(s => s.id === selectedId);
+    if (!s) return;
+    if (s.type === 'arrow') {
+      const dx = p.x - dragOffX - dragStartShape.x1;
+      const dy = p.y - dragOffY - dragStartShape.y1;
+      s.x1 = dragStartShape.x1 + dx; s.y1 = dragStartShape.y1 + dy;
+      s.x2 = dragStartShape.x2 + dx; s.y2 = dragStartShape.y2 + dy;
+    } else {
+      s.x = p.x - dragOffX;
+      s.y = p.y - dragOffY;
+    }
+    redraw(); return;
+  }
+
+  // Actualizar forma en dibujo
+  const s = shapes[shapes.length - 1];
+  if (!s) return;
+  if (s.type === 'rect' || s.type === 'circle') {
+    s.w = p.x - startX;
+    s.h = p.y - startY;
+  } else if (s.type === 'arrow') {
+    s.x2 = p.x; s.y2 = p.y;
+  }
+  redraw();
+}
+
+document.addEventListener('mouseup',  onUp);
+document.addEventListener('touchend', onUp);
+
+function onUp(e) {
+  // Limpiar formas de tamaño 0
+  if (drawing && currentTool !== 'select') {
+    const s = shapes[shapes.length - 1];
+    if (s && s.type !== 'arrow' && Math.abs(s.w) < 4 && Math.abs(s.h) < 4) {
+      shapes.pop(); selectedId = null;
+    }
+    if (s && s.type === 'arrow') {
+      const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
+      if (Math.sqrt(dx*dx+dy*dy) < 8) { shapes.pop(); selectedId = null; }
+    }
+  }
+  drawing = false; resizing = false; dragStartShape = null;
+  redraw();
+}
+
+// ── ACCIONES ──
+function eliminarSeleccionada() {
+  if (selectedId === null) return;
+  shapes = shapes.filter(s => s.id !== selectedId);
+  selectedId = null;
+  redraw();
+}
+
+function limpiarFormas() {
+  shapes = []; selectedId = null; redraw();
+}
+
+// ── CAPTURA PNG (oculta SVG handles, captura, restaura) ──
+function capturarPNG() {
+  // Ocultar handles temporalmente borrando selección
+  const prevSel = selectedId;
+  selectedId = null;
+  redraw();
+
+  // Combinar: capture-box + svg en un canvas
+  const box = document.getElementById('capture-box');
+  document.getElementById('info').textContent = 'Capturando...';
+
+  html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(canvas => {
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'imagen_final.png';
+    a.click();
+    document.getElementById('info').textContent = '✔ PNG descargado.';
+    selectedId = prevSel;
+    redraw();
+  });
+}
+
+// ── DESCARGAR HTML ──
+function descargarHTML() {
+  const texto  = document.getElementById('input-texto').value.trim().toUpperCase() || 'TEXTO';
+  const altura = document.getElementById('img-height').value;
+  const fsize  = document.getElementById('font-size').value;
+  const svgW   = wrapper.offsetWidth;
+  const svgH   = wrapper.offsetHeight;
+
+  // Serializar SVG sin handles
+  const prevSel = selectedId; selectedId = null; redraw();
+  const svgClone = svg.cloneNode(true);
+  svgClone.style.position = 'absolute';
+  svgClone.style.top = '0'; svgClone.style.left = '0';
+  svgClone.style.pointerEvents = 'none';
+  const svgStr = new XMLSerializer().serializeToString(svgClone);
+  selectedId = prevSel; redraw();
+
+  const celdas = dataURLs.length > 0
+    ? dataURLs.map(url =>
+        `<div style="flex:1;border-right:2px solid #ccc;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+          <img src="${url}" style="width:100%;height:100%;object-fit:contain;" />
+        </div>`).join('\n')
+    : ['IMG1','IMG2','IMG3'].map((l,i)=>{
+        const b=['#000','#d32f2f','#f0c000'];
+        return `<div style="flex:1;border-right:2px solid ${b[i]};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#d32f2f;">${l}</div>`;
+      }).join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Imagen generada</title>
+<style>
+body{margin:0;padding:20px;background:#e8e8e8;display:flex;justify-content:center;}
+#wrap{position:relative;background:#fff;border:2px solid #ccc;border-radius:6px;overflow:hidden;max-width:900px;width:100%;}
+#box{display:flex;flex-direction:column;}
+#row{display:flex;height:${altura}px;border-bottom:2px solid #ccc;}
+#row div:last-child{border-right:none!important;}
+#txt{text-align:center;padding:20px;font-family:Arial,sans-serif;font-size:${fsize}px;font-weight:700;color:#d32f2f;text-transform:uppercase;letter-spacing:.04em;}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+</style></head><body>
+<div id="wrap">
+  <div id="box">
+    <div id="row">${celdas}</div>
+    <div id="txt">${texto}</div>
+  </div>
+  ${svgStr}
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'imagen_final.html';
+  a.click();
+}
+
+// ── REDRAW cuando cambia tamaño ventana ──
+window.addEventListener('resize', () => { actualizar(); });
+
+// Inicializar
+actualizar();
+</script>
+</body>
+</html>

@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Generador de Imagen</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, sans-serif;
+    background: #e8e8e8;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    gap: 18px;
+  }
+
+  /* ── PANEL ── */
+  #panel {
+    background: #fff;
+    border-radius: 10px;
+    padding: 18px 22px;
+    width: 100%;
+    max-width: 960px;
+    box-shadow: 0 2px 12px #0002;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #panel h2 { font-size: 15px; font-weight: 700; color: #222; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 130px; }
+  .field label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #666; }
+  .field input[type="text"] {
+    border: 1.5px solid #ddd; border-radius: 6px; padding: 7px 10px;
+    font-size: 14px; font-family: inherit; outline: none;
+  }
+  .field input[type="text"]:focus { border-color: #d32f2f; }
+  .field input[type="file"] {
+    border: 2px dashed #ccc; border-radius: 6px; padding: 7px 10px;
+    font-size: 12px; cursor: pointer; background: #fafafa; color: #555;
+  }
+  .range-row { display: flex; align-items: center; gap: 6px; }
+  .range-row input { flex: 1; accent-color: #d32f2f; cursor: pointer; }
+  .range-row span { font-size: 12px; font-weight: 700; color: #d32f2f; min-width: 32px; }
+
+  .btn {
+    padding: 8px 14px; border-radius: 6px; border: none;
+    font-family: inherit; font-size: 13px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: transform .1s, opacity .15s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-red  { background: #d32f2f; color: #fff; }
+  .btn-dark { background: #222; color: #fff; }
+  .btn-gray { background: #eee; color: #333; border: 1.5px solid #ccc; }
+  .btn-tool {
+    background: #fff; border: 2px solid #ccc; color: #444;
+    font-size: 17px; padding: 5px 11px; border-radius: 6px;
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .btn-tool:hover { border-color: #1565c0; background: #e8f0fe; }
+  .btn-tool.active { border-color: #1565c0; background: #1565c0; color: #fff; }
+
+  #info { font-size: 12px; color: #888; min-height: 14px; }
+
+  /* ── TOOLBAR DIBUJO ── */
+  #draw-toolbar {
+    background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px;
+    padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  #draw-toolbar label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #666; letter-spacing: .07em; }
+  .sep { width: 1px; height: 28px; background: #ddd; }
+
+  /* ── RESULTADO ── */
+  #result-area { width: 100%; max-width: 960px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+  #canvas-wrapper {
+    position: relative;
+    width: 100%;
+    background: #fff;
+    border: 2px solid #ccc;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  /* ── LAYOUT PRINCIPAL DEL CONTENIDO ── */
+  /*
+    Hasta 5 imágenes → fila horizontal arriba, texto abajo (layout A)
+    Más de 5         → columnas de imágenes a la izquierda + texto centrado a la derecha (layout B)
+  */
+  #capture-box { display: flex; flex-direction: column; width: 100%; }
+
+  /* LAYOUT A: fila de imágenes + texto abajo */
+  #top-row {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-bottom: 2px solid #ccc;
+  }
+  .img-cell {
+    flex: 1;
+    border-right: 2px solid #ccc;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    min-width: 0;
+  }
+  .img-cell:last-child { border-right: none; }
+  .img-cell img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  #text-zone { text-align: center; padding: 18px 12px; background: #fff; }
+  #red-label {
+    font-family: Arial, sans-serif; font-weight: 700; color: #d32f2f;
+    text-transform: uppercase; letter-spacing: .04em; line-height: 1.1;
+  }
+
+  /* LAYOUT B: columnas de imgs a la izquierda + texto centrado a la derecha */
+  #layout-b {
+    display: none; /* se activa por JS */
+    flex-direction: row;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  #img-columns {
+    display: flex;
+    flex-direction: row;
+    border-right: 2px solid #ccc;
+    flex-shrink: 0;
+  }
+
+  .img-col {
+    display: flex;
+    flex-direction: column;
+    border-right: 2px solid #ccc;
+  }
+  .img-col:last-child { border-right: none; }
+
+  .img-col .img-cell {
+    border-right: none;
+    border-bottom: 2px solid #ccc;
+    flex: none;
+  }
+  .img-col .img-cell:last-child { border-bottom: none; }
+
+  #text-center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    text-align: center;
+  }
+
+  /* SVG overlay */
+  #draw-svg {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #draw-svg.active { pointer-events: all; cursor: crosshair; }
+  #draw-svg.select-mode { cursor: default; }
+
+  #dl-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .handle { cursor: nwse-resize; }
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <h2>⚙ Configuración</h2>
+  <div class="row">
+    <div class="field">
+      <label>Imágenes</label>
+      <input type="file" id="input-images" accept="image/*" multiple />
+    </div>
+    <div class="field">
+      <label>Texto en rojo</label>
+      <input type="text" id="input-texto" placeholder="Ej: Bienvenidos al curso"
+             oninput="actualizar()" onkeydown="if(event.key==='Enter') actualizar()" />
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label>Altura imágenes (px)</label>
+      <div class="range-row">
+        <input type="range" id="img-height" min="60" max="400" value="200" step="10"
+               oninput="document.getElementById('height-val').textContent=this.value+'px'; actualizar()" />
+        <span id="height-val">200px</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Tamaño texto</label>
+      <div class="range-row">
+        <input type="range" id="font-size" min="16" max="90" value="40" step="2"
+               oninput="document.getElementById('font-val').textContent=this.value+'px'; actualizar()" />
+        <span id="font-val">40px</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Máx. imgs fila principal</label>
+      <div class="range-row">
+        <input type="range" id="max-top" min="1" max="8" value="5" step="1"
+               oninput="document.getElementById('maxtop-val').textContent=this.value; actualizar()" />
+        <span id="maxtop-val">5</span>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn btn-red"  onclick="actualizar()">▶ Generar</button>
+    <button class="btn btn-dark" onclick="capturarPNG()">📷 PNG</button>
+    <button class="btn btn-gray" onclick="descargarHTML()">⬇ HTML</button>
+  </div>
+  <p id="info">Seleccioná imágenes y hacé clic en Generar.</p>
+
+  <!-- TOOLBAR DIBUJO -->
+  <div id="draw-toolbar">
+    <label>Dibujo:</label>
+    <button class="btn-tool active" id="tool-select" title="Seleccionar/mover" onclick="setTool('select')">↖</button>
+    <button class="btn-tool" id="tool-rect"   title="Rectángulo"    onclick="setTool('rect')">▭</button>
+    <button class="btn-tool" id="tool-circle" title="Círculo/Elipse" onclick="setTool('circle')">◯</button>
+    <button class="btn-tool" id="tool-arrow"  title="Flecha"         onclick="setTool('arrow')">➜</button>
+    <div class="sep"></div>
+    <label>Color:</label>
+    <input type="color" id="shape-color" value="#d32f2f"
+           style="width:30px;height:30px;border:none;background:none;cursor:pointer;padding:0;" />
+    <label>Grosor:</label>
+    <div class="range-row" style="min-width:90px">
+      <input type="range" id="stroke-width" min="1" max="14" value="3"
+             oninput="document.getElementById('sw-val').textContent=this.value" />
+      <span id="sw-val">3</span>
+    </div>
+    <div class="sep"></div>
+    <button class="btn btn-gray" onclick="deshacer()" title="Deshacer último dibujo">↩ Deshacer</button>
+    <button class="btn btn-gray" onclick="eliminarSeleccionada()">🗑 Borrar</button>
+    <button class="btn btn-gray" onclick="limpiarFormas()">✕ Limpiar</button>
+  </div>
+</div>
+
+<!-- RESULTADO -->
+<div id="result-area">
+  <div id="canvas-wrapper">
+    <div id="capture-box">
+
+      <!-- LAYOUT A: fila arriba + texto abajo (≤ maxTop imágenes) -->
+      <div id="top-row"></div>
+      <div id="text-zone">
+        <div id="red-label" style="font-size:40px;">TEXTO</div>
+      </div>
+
+      <!-- LAYOUT B: columnas izquierda + texto centrado derecha (> maxTop imágenes) -->
+      <div id="layout-b">
+        <div id="img-columns"></div>
+        <div id="text-center">
+          <div id="red-label-b" style="font-size:40px;font-family:Arial,sans-serif;font-weight:700;color:#d32f2f;text-transform:uppercase;letter-spacing:.04em;line-height:1.1;">TEXTO</div>
+        </div>
+      </div>
+
+    </div>
+    <svg id="draw-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div id="dl-row">
+    <button class="btn btn-dark" onclick="capturarPNG()">📷 Descargar PNG</button>
+    <button class="btn btn-gray" onclick="descargarHTML()">⬇ Descargar HTML</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+// ════════════════════════════════════════
+//  ESTADO
+// ════════════════════════════════════════
+let dataURLs = [];
+let currentTool = 'select';
+let shapes = [];
+let history = []; // pila de estados para deshacer
+let selectedId = null;
+let drawing = false, resizing = false;
+let startX, startY, dragOffX, dragOffY, dragStartShape, resizeHandle;
+let nextId = 1;
+
+const svg    = document.getElementById('draw-svg');
+const wrapper= document.getElementById('canvas-wrapper');
+
+// ════════════════════════════════════════
+//  IMÁGENES
+// ════════════════════════════════════════
+document.getElementById('input-images').addEventListener('change', function () {
+  dataURLs = [];
+  const files = Array.from(this.files);
+  if (!files.length) return;
+  let done = 0;
+  files.forEach((f, i) => {
+    const r = new FileReader();
+    r.onload = e => {
+      dataURLs[i] = e.target.result;
+      if (++done === files.length) {
+        document.getElementById('info').textContent = `✔ ${files.length} imagen(es) cargada(s).`;
+        actualizar();
+      }
+    };
+    r.readAsDataURL(f);
+  });
+});
+
+// ════════════════════════════════════════
+//  ACTUALIZAR LAYOUT
+// ════════════════════════════════════════
+function actualizar() {
+  const texto   = document.getElementById('input-texto').value.trim();
+  const altPx   = parseInt(document.getElementById('img-height').value);
+  const fsize   = document.getElementById('font-size').value + 'px';
+  const maxTop  = parseInt(document.getElementById('max-top').value);
+
+  const label   = texto ? texto.toUpperCase() : 'TEXTO';
+
+  // Actualizar ambos labels
+  document.getElementById('red-label').style.fontSize   = fsize;
+  document.getElementById('red-label').textContent      = label;
+  document.getElementById('red-label-b').style.fontSize = fsize;
+  document.getElementById('red-label-b').textContent    = label;
+
+  // Imágenes a mostrar (o placeholders)
+  const imgs = dataURLs.length > 0 ? dataURLs
+    : [null, null, null]; // 3 placeholders
+
+  const topRow     = document.getElementById('top-row');
+  const textZone   = document.getElementById('text-zone');
+  const layoutB    = document.getElementById('layout-b');
+  const imgColumns = document.getElementById('img-columns');
+
+  topRow.innerHTML = '';
+  imgColumns.innerHTML = '';
+
+  if (imgs.length <= maxTop) {
+    // ── LAYOUT A ──
+    topRow.style.display    = 'flex';
+    textZone.style.display  = 'block';
+    layoutB.style.display   = 'none';
+
+    topRow.style.height = altPx + 'px';
+    imgs.forEach((url, i) => {
+      topRow.appendChild(makeCell(url, altPx, i, imgs.length));
+    });
+
+  } else {
+    // ── LAYOUT B ──
+    topRow.style.display   = 'none';
+    textZone.style.display = 'none';
+    layoutB.style.display  = 'flex';
+
+    // Primeras maxTop imágenes en fila horizontal
+    const topImgs  = imgs.slice(0, maxTop);
+    // Imágenes restantes en columnas de 2 al lado del texto
+    const sideImgs = imgs.slice(maxTop);
+
+    // --- Fila de arriba (dentro de layout-b, como columna que ocupa todo el ancho) ---
+    // Reconstruimos capture-box para layout B:
+    // [columna izquierda: fila top + columnas laterales] | [texto centrado]
+    // Simplificamos: fila top encima de todo, debajo columnas + texto
+
+    // Usamos una estructura diferente:
+    // capture-box (column):
+    //   top-row (flex row, maxTop imgs)   ← ya existe pero lo usamos dentro de layout-b
+    //   bottom-section (flex row):
+    //     img-columns (columnas de 2)
+    //     text-center
+
+    // Reutilizamos layout-b como bottom-section y ponemos top-row visible arriba
+    topRow.style.display = 'flex';
+    topRow.style.height  = altPx + 'px';
+    topImgs.forEach((url, i) => {
+      topRow.appendChild(makeCell(url, altPx, i, topImgs.length));
+    });
+
+    // Columnas laterales: grupos de 2
+    const cols = [];
+    for (let i = 0; i < sideImgs.length; i += 2) {
+      cols.push(sideImgs.slice(i, i + 2));
+    }
+
+    cols.forEach(group => {
+      const col = document.createElement('div');
+      col.className = 'img-col';
+      group.forEach((url, j) => {
+        const cell = makeCell(url, altPx, j, group.length);
+        cell.style.width = '160px';
+        cell.style.height = altPx + 'px';
+        col.appendChild(cell);
+      });
+      imgColumns.appendChild(col);
+    });
+
+    // Mostrar layout-b (bottom section)
+    layoutB.style.display = 'flex';
+    textZone.style.display = 'none';
+  }
+
+  setTimeout(redraw, 50);
+}
+
+function makeCell(url, altPx, i, total) {
+  const cell = document.createElement('div');
+  cell.className = 'img-cell';
+  cell.style.height = altPx + 'px';
+
+  if (!url) {
+    // placeholder
+    const colores = ['#000', '#d32f2f', '#f0c000'];
+    const nombres = ['IMG1','IMG2','IMG3','IMG4','IMG5','IMG6','IMG7','IMG8'];
+    cell.style.borderColor = colores[i % colores.length];
+    cell.style.fontSize    = '18px';
+    cell.style.fontWeight  = '700';
+    cell.style.color       = '#d32f2f';
+    cell.textContent       = nombres[i] || `IMG${i+1}`;
+  } else {
+    const img = document.createElement('img');
+    img.src = url;
+    cell.appendChild(img);
+  }
+  return cell;
+}
+
+// ════════════════════════════════════════
+//  HERRAMIENTA DE DIBUJO
+// ════════════════════════════════════════
+function setTool(t) {
+  currentTool = t;
+  document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
+  document.getElementById('tool-' + t).classList.add('active');
+  svg.classList.toggle('active', true);
+  svg.classList.toggle('select-mode', t === 'select');
+  if (t !== 'select') selectedId = null;
+  redraw();
+}
+setTool('select');
+
+// ════════════════════════════════════════
+//  REDRAW SVG
+// ════════════════════════════════════════
+function redraw() {
+  const w = wrapper.offsetWidth;
+  const h = wrapper.offsetHeight;
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // Defs (marcadores de flecha)
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  shapes.forEach(s => {
+    if (s.type !== 'arrow') return;
+    const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
+    m.setAttribute('id','arr-'+s.id);
+    m.setAttribute('markerWidth','10'); m.setAttribute('markerHeight','7');
+    m.setAttribute('refX','10'); m.setAttribute('refY','3.5');
+    m.setAttribute('orient','auto');
+    const p = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    p.setAttribute('points','0 0,10 3.5,0 7'); p.setAttribute('fill', s.color);
+    m.appendChild(p); defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+
+  shapes.forEach(s => {
+    const sel = s.id === selectedId;
+    let el;
+
+    if (s.type === 'rect') {
+      el = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      const x = s.w < 0 ? s.x + s.w : s.x;
+      const y = s.h < 0 ? s.y + s.h : s.y;
+      el.setAttribute('x', x); el.setAttribute('y', y);
+      el.setAttribute('width', Math.abs(s.w)); el.setAttribute('height', Math.abs(s.h));
+      el.setAttribute('rx', 3); el.setAttribute('fill','none');
+      el.setAttribute('stroke', s.color); el.setAttribute('stroke-width', s.sw);
+      if (sel) el.setAttribute('stroke-dasharray','6 3');
+
+    } else if (s.type === 'circle') {
+      el = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+      el.setAttribute('cx', s.x + s.w/2); el.setAttribute('cy', s.y + s.h/2);
+      el.setAttribute('rx', Math.abs(s.w/2)); el.setAttribute('ry', Math.abs(s.h/2));
+      el.setAttribute('fill','none');
+      el.setAttribute('stroke', s.color); el.setAttribute('stroke-width', s.sw);
+      if (sel) el.setAttribute('stroke-dasharray','6 3');
+
+    } else if (s.type === 'arrow') {
+      el = document.createElementNS('http://www.w3.org/2000/svg','line');
+      el.setAttribute('x1', s.x1); el.setAttribute('y1', s.y1);
+      el.setAttribute('x2', s.x2); el.setAttribute('y2', s.y2);
+      el.setAttribute('stroke', s.color); el.setAttribute('stroke-width', s.sw);
+      el.setAttribute('marker-end', `url(#arr-${s.id})`);
+      if (sel) el.setAttribute('stroke-dasharray','6 3');
+    }
+
+    if (el) {
+      el.dataset.id = s.id;
+      el.style.cursor = currentTool === 'select' ? 'move' : 'crosshair';
+      svg.appendChild(el);
+
+      // Handles de resize
+      if (sel && s.type !== 'arrow') {
+        const bx = s.w < 0 ? s.x + s.w : s.x;
+        const by = s.h < 0 ? s.y + s.h : s.y;
+        const bw = Math.abs(s.w), bh = Math.abs(s.h);
+        addHandle(bx + bw - 6, by + bh - 6, 'br', s.id, '#1565c0');
+      }
+      if (sel && s.type === 'arrow') {
+        addCircleHandle(s.x1, s.y1, 'start', s.id, '#4caf50');
+        addCircleHandle(s.x2, s.y2, 'end',   s.id, '#1565c0');
+      }
+    }
+  });
+}
+
+function addHandle(x, y, type, id, fill) {
+  const h = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  h.setAttribute('x', x); h.setAttribute('y', y);
+  h.setAttribute('width', 12); h.setAttribute('height', 12);
+  h.setAttribute('rx', 2); h.setAttribute('fill', fill);
+  h.setAttribute('stroke','#fff'); h.setAttribute('stroke-width', 1.5);
+  h.classList.add('handle');
+  h.dataset.resize = type; h.dataset.id = id;
+  svg.appendChild(h);
+}
+function addCircleHandle(cx, cy, type, id, fill) {
+  const h = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  h.setAttribute('cx', cx); h.setAttribute('cy', cy); h.setAttribute('r', 7);
+  h.setAttribute('fill', fill); h.setAttribute('stroke','#fff'); h.setAttribute('stroke-width',1.5);
+  h.classList.add('handle');
+  h.dataset.resize = type; h.dataset.id = id;
+  svg.appendChild(h);
+}
+
+// ════════════════════════════════════════
+//  EVENTOS PUNTERO
+// ════════════════════════════════════════
+function getP(e) {
+  const r = wrapper.getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - r.left, y: src.clientY - r.top };
+}
+
+svg.addEventListener('mousedown',  onDown);
+svg.addEventListener('touchstart', onDown, { passive: false });
+
+function onDown(e) {
+  e.preventDefault();
+  const p = getP(e);
+  const target = e.target;
+
+  if (target.dataset.resize) {
+    resizing = true; resizeHandle = target.dataset.resize;
+    selectedId = parseInt(target.dataset.id);
+    dragStartShape = { ...shapes.find(s => s.id === selectedId) };
+    startX = p.x; startY = p.y; return;
+  }
+
+  if (currentTool === 'select') {
+    if (target.dataset.id) {
+      selectedId = parseInt(target.dataset.id);
+      const s = shapes.find(s => s.id === selectedId);
+      dragStartShape = { ...s };
+      dragOffX = p.x - (s.type === 'arrow' ? s.x1 : s.x);
+      dragOffY = p.y - (s.type === 'arrow' ? s.y1 : s.y);
+      drawing = true;
+    } else { selectedId = null; }
+    redraw(); return;
+  }
+
+  // Guardar estado antes de dibujar
+  history.push(JSON.stringify(shapes));
+
+  drawing = true; startX = p.x; startY = p.y;
+  const id = nextId++;
+  const color = document.getElementById('shape-color').value;
+  const sw    = parseInt(document.getElementById('stroke-width').value);
+
+  if (currentTool === 'rect' || currentTool === 'circle') {
+    shapes.push({ id, type: currentTool, color, sw, x: startX, y: startY, w: 0, h: 0 });
+  } else if (currentTool === 'arrow') {
+    shapes.push({ id, type: 'arrow', color, sw, x1: startX, y1: startY, x2: startX, y2: startY });
+  }
+  selectedId = id; redraw();
+}
+
+document.addEventListener('mousemove',  onMove);
+document.addEventListener('touchmove',  onMove, { passive: false });
+
+function onMove(e) {
+  if (!drawing && !resizing) return;
+  e.preventDefault();
+  const p = getP(e);
+
+  if (resizing) {
+    const s = shapes.find(s => s.id === selectedId);
+    if (!s) return;
+    const dx = p.x - startX, dy = p.y - startY;
+    if (resizeHandle === 'br') { s.w = dragStartShape.w + dx; s.h = dragStartShape.h + dy; }
+    else if (resizeHandle === 'end')   { s.x2 = p.x; s.y2 = p.y; }
+    else if (resizeHandle === 'start') { s.x1 = p.x; s.y1 = p.y; }
+    redraw(); return;
+  }
+
+  if (currentTool === 'select') {
+    const s = shapes.find(s => s.id === selectedId);
+    if (!s) return;
+    if (s.type === 'arrow') {
+      const dx = p.x - dragOffX - dragStartShape.x1;
+      const dy = p.y - dragOffY - dragStartShape.y1;
+      s.x1 = dragStartShape.x1 + dx; s.y1 = dragStartShape.y1 + dy;
+      s.x2 = dragStartShape.x2 + dx; s.y2 = dragStartShape.y2 + dy;
+    } else { s.x = p.x - dragOffX; s.y = p.y - dragOffY; }
+    redraw(); return;
+  }
+
+  const s = shapes[shapes.length - 1];
+  if (!s) return;
+  if (s.type === 'rect' || s.type === 'circle') { s.w = p.x - startX; s.h = p.y - startY; }
+  else if (s.type === 'arrow') { s.x2 = p.x; s.y2 = p.y; }
+  redraw();
+}
+
+document.addEventListener('mouseup',  onUp);
+document.addEventListener('touchend', onUp);
+
+function onUp() {
+  if (drawing && currentTool !== 'select') {
+    const s = shapes[shapes.length - 1];
+    if (s && s.type !== 'arrow' && Math.abs(s.w) < 4 && Math.abs(s.h) < 4) {
+      shapes.pop(); history.pop(); selectedId = null;
+    }
+    if (s && s.type === 'arrow') {
+      const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
+      if (Math.sqrt(dx*dx+dy*dy) < 8) { shapes.pop(); history.pop(); selectedId = null; }
+    }
+  }
+  drawing = false; resizing = false; dragStartShape = null;
+  redraw();
+}
+
+// ════════════════════════════════════════
+//  ACCIONES DIBUJO
+// ════════════════════════════════════════
+function deshacer() {
+  if (history.length === 0) return;
+  shapes = JSON.parse(history.pop());
+  selectedId = null;
+  redraw();
+}
+function eliminarSeleccionada() {
+  if (selectedId === null) return;
+  history.push(JSON.stringify(shapes));
+  shapes = shapes.filter(s => s.id !== selectedId);
+  selectedId = null; redraw();
+}
+function limpiarFormas() {
+  if (shapes.length === 0) return;
+  history.push(JSON.stringify(shapes));
+  shapes = []; selectedId = null; redraw();
+}
+
+// ════════════════════════════════════════
+//  CAPTURA / DESCARGA
+// ════════════════════════════════════════
+function capturarPNG() {
+  const prev = selectedId; selectedId = null; redraw();
+  document.getElementById('info').textContent = 'Capturando...';
+  html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(canvas => {
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png'); a.download = 'imagen_final.png'; a.click();
+    document.getElementById('info').textContent = '✔ PNG descargado.';
+    selectedId = prev; redraw();
+  });
+}
+
+function descargarHTML() {
+  const texto  = document.getElementById('input-texto').value.trim().toUpperCase() || 'TEXTO';
+  const altPx  = parseInt(document.getElementById('img-height').value);
+  const fsize  = document.getElementById('font-size').value;
+  const maxTop = parseInt(document.getElementById('max-top').value);
+  const svgW   = wrapper.offsetWidth, svgH = wrapper.offsetHeight;
+
+  const prev = selectedId; selectedId = null; redraw();
+  const svgStr = new XMLSerializer().serializeToString(svg);
+  selectedId = prev; redraw();
+
+  const imgs = dataURLs.length > 0 ? dataURLs : [null, null, null];
+  const makeCellHTML = (url, i, cols) => {
+    if (!url) {
+      const colores = ['#000','#d32f2f','#f0c000'];
+      return `<div style="flex:1;border-right:2px solid #ccc;height:${altPx}px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#d32f2f;border-color:${colores[i%3]};">IMG${i+1}</div>`;
+    }
+    return `<div style="flex:1;border-right:2px solid #ccc;height:${altPx}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${url}" style="width:100%;height:100%;object-fit:contain;" /></div>`;
+  };
+
+  let bodyHTML = '';
+  if (imgs.length <= maxTop) {
+    const cells = imgs.map((u,i) => makeCellHTML(u, i, imgs.length)).join('');
+    bodyHTML = `
+      <div style="display:flex;height:${altPx}px;border-bottom:2px solid #ccc;">${cells}</div>
+      <div style="text-align:center;padding:18px 12px;">
+        <div style="font-family:Arial,sans-serif;font-weight:700;color:#d32f2f;font-size:${fsize}px;text-transform:uppercase;letter-spacing:.04em;">${texto}</div>
+      </div>`;
+  } else {
+    const topImgs  = imgs.slice(0, maxTop);
+    const sideImgs = imgs.slice(maxTop);
+    const topCells = topImgs.map((u,i) => makeCellHTML(u, i, topImgs.length)).join('');
+    // Columnas de 2
+    let colsHTML = '';
+    for (let i = 0; i < sideImgs.length; i += 2) {
+      const group = sideImgs.slice(i, i+2);
+      const rows = group.map((u,j) => `<div style="width:160px;height:${altPx}px;border-bottom:2px solid #ccc;overflow:hidden;display:flex;align-items:center;justify-content:center;">${u ? `<img src="${u}" style="width:100%;height:100%;object-fit:contain;"/>` : `IMG${maxTop+i+j+1}`}</div>`).join('');
+      colsHTML += `<div style="display:flex;flex-direction:column;border-right:2px solid #ccc;">${rows}</div>`;
+    }
+    bodyHTML = `
+      <div style="display:flex;height:${altPx}px;border-bottom:2px solid #ccc;">${topCells}</div>
+      <div style="display:flex;">
+        <div style="display:flex;border-right:2px solid #ccc;">${colsHTML}</div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:20px;">
+          <div style="font-family:Arial,sans-serif;font-weight:700;color:#d32f2f;font-size:${fsize}px;text-transform:uppercase;letter-spacing:.04em;text-align:center;">${texto}</div>
+        </div>
+      </div>`;
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Imagen generada</title>
+<style>
+body{margin:0;padding:20px;background:#e8e8e8;display:flex;justify-content:center;}
+#wrap{position:relative;background:#fff;border:2px solid #ccc;border-radius:6px;overflow:hidden;max-width:960px;width:100%;}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+</style></head><body>
+<div id="wrap">
+  ${bodyHTML}
+  <div id="overlay">${svgStr}</div>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'imagen_final.html'; a.click();
+}
+
+window.addEventListener('resize', () => { actualizar(); });
+actualizar();
+</script>
+</body>
+</html>
